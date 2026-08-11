@@ -20,6 +20,8 @@ from v6_metrics import SAMPLE_RATE, TOTAL_SAMPLES
 SYNTHESIS_PROBABILITIES = {
     "measured": 0.50, "interpolate": 0.30, "extrapolate": 0.10, "augment": 0.10,
 }
+NEIGHBOR_POLICY_SINGLE = "single_nearest"
+NEIGHBOR_POLICY_E10A = "three_neighbor_multispace"
 
 
 def _shift_ir(path: np.ndarray, delay: int) -> np.ndarray:
@@ -102,6 +104,79 @@ def _band_energy(path: np.ndarray) -> float:
     return float(np.sum(np.abs(spectrum[mask]) ** 2))
 
 
+def _scaled_nrmse(target: np.ndarray, candidate: np.ndarray) -> float:
+    first = np.asarray(target, dtype=np.complex128).reshape(-1)
+    second = np.asarray(candidate, dtype=np.complex128).reshape(-1)
+    denominator = float(np.vdot(second, second).real)
+    scale = float(np.vdot(second, first).real / max(denominator, 1e-20))
+    return float(np.linalg.norm(first - scale * second) / max(np.linalg.norm(first), 1e-20))
+
+
+def multispace_path_distances(
+    secondary_paths: np.ndarray,
+    primary_real: np.ndarray,
+    primary_imag: np.ndarray,
+    band_mask: np.ndarray,
+    path_indices: Sequence[int],
+) -> dict[int, dict[int, dict[str, float]]]:
+    """Return retained-only distances used by the frozen E10-A sampler."""
+    paths = tuple(int(value) for value in path_indices)
+    if len(paths) < 4 or len(set(paths)) != len(paths) or any(value not in range(8) for value in paths):
+        raise ValueError("E10-A requires at least four unique retained paths from paths 1-8.")
+    secondary = np.asarray(secondary_paths, dtype=np.float64)
+    primary = np.asarray(primary_real, dtype=np.float64) + 1j * np.asarray(primary_imag, dtype=np.float64)
+    band = np.asarray(band_mask, dtype=bool)
+    if secondary.ndim != 2 or primary.ndim != 2 or primary.shape[0] != secondary.shape[0]:
+        raise ValueError("E10-A secondary paths and primary templates have incompatible shapes.")
+    result: dict[int, dict[int, dict[str, float]]] = {}
+    frequencies = np.fft.rfftfreq(4096, 1.0 / SAMPLE_RATE)
+    response_band = (frequencies >= 50.0) & (frequencies <= 8000.0)
+    for first in paths:
+        first_response = np.fft.rfft(secondary[first], n=4096)[response_band]
+        candidates = {}
+        for second in paths:
+            if second == first:
+                continue
+            aligned = globally_align_ir(secondary[first], secondary[second])
+            second_response = np.fft.rfft(secondary[second], n=4096)[response_band]
+            candidates[second] = {
+                "aligned_ir_nrmse": _scaled_nrmse(secondary[first], aligned),
+                "secondary_response_nrmse": _scaled_nrmse(first_response, second_response),
+                "primary_template_nrmse": _scaled_nrmse(primary[first, band], primary[second, band]),
+            }
+        result[first] = candidates
+    return result
+
+
+def build_multispace_neighbor_table(
+    secondary_paths: np.ndarray,
+    primary_real: np.ndarray,
+    primary_imag: np.ndarray,
+    band_mask: np.ndarray,
+    path_indices: Sequence[int],
+    *,
+    neighbor_count: int = 3,
+) -> tuple[dict[int, tuple[int, ...]], dict[int, dict[int, dict[str, float]]]]:
+    """Rank each retained path in three spaces and keep its closest peers."""
+    distances = multispace_path_distances(
+        secondary_paths, primary_real, primary_imag, band_mask, path_indices,
+    )
+    if neighbor_count < 1 or any(len(values) < neighbor_count for values in distances.values()):
+        raise ValueError("neighbor_count exceeds the retained candidate count.")
+    table = {}
+    metric_names = ("aligned_ir_nrmse", "secondary_response_nrmse", "primary_template_nrmse")
+    for first, candidates in distances.items():
+        ranks: dict[str, dict[int, int]] = {}
+        for metric in metric_names:
+            ordered = sorted(candidates, key=lambda value: (candidates[value][metric], value))
+            ranks[metric] = {path: index + 1 for index, path in enumerate(ordered)}
+        for second, values in candidates.items():
+            values["mean_rank"] = float(np.mean([ranks[metric][second] for metric in metric_names]))
+        ordered = sorted(candidates, key=lambda value: (candidates[value]["mean_rank"], value))
+        table[first] = tuple(ordered[:neighbor_count])
+    return table, distances
+
+
 def synthesize_path(
     first: np.ndarray,
     second: np.ndarray,
@@ -152,6 +227,9 @@ def build_phase3g_manifest(
     path_indices: Sequence[int] = tuple(range(8)),
     seed: int = 2026,
     stress_seed: int = 3030,
+    neighbor_policy: str = NEIGHBOR_POLICY_SINGLE,
+    neighbor_table: dict[int, Sequence[int]] | None = None,
+    correction_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     paths = tuple(int(value) for value in path_indices)
     if not paths or any(value not in range(8) for value in paths):
@@ -173,6 +251,16 @@ def build_phase3g_manifest(
             "case": index, "first_path_zero_based": first, "second_path_zero_based": second,
             "mode": mode, "amount": float(stress_rng.uniform(*limits)),
         })
+    if neighbor_policy not in {NEIGHBOR_POLICY_SINGLE, NEIGHBOR_POLICY_E10A}:
+        raise ValueError(f"Unsupported Phase-3G neighbor policy: {neighbor_policy}")
+    serialized_neighbors = None
+    if neighbor_policy == NEIGHBOR_POLICY_E10A:
+        if neighbor_table is None or set(neighbor_table) != set(paths):
+            raise ValueError("E10-A requires a neighbor row for every retained path.")
+        serialized_neighbors = {
+            str(first + 1): [int(second) + 1 for second in neighbor_table[first]]
+            for first in paths
+        }
     return {
         "manifest_version": 1, "phase": "3G", "sample_rate": SAMPLE_RATE,
         "total_samples": TOTAL_SAMPLES, "seed": seed, "stress_seed": stress_seed,
@@ -180,6 +268,9 @@ def build_phase3g_manifest(
         "path_indices_zero_based": list(paths), "synthesis_probabilities": SYNTHESIS_PROBABILITIES,
         "dtw_radius": 16, "switch_probability": 0.25, "switch_sample": 96_000,
         "candidate_mask_probabilities": {"none": 0.4, "one_endpoint": 0.3, "two_endpoints": 0.3},
+        "neighbor_policy": neighbor_policy,
+        "neighbor_table_one_based": serialized_neighbors,
+        "correction": correction_metadata,
         "stress_cases": stress,
         "input_sha256": {str(path.relative_to(root)): sha256_file(path) for path in sorted(set(inputs))},
         "sealed_paths_touched": False,
@@ -200,6 +291,8 @@ class Phase3GSequenceDataset(Dataset):
         synthesis_enabled: bool = True,
         switch_probability: float = 0.25,
         seed: int = 2026,
+        neighbor_policy: str = NEIGHBOR_POLICY_SINGLE,
+        neighbor_table: dict[int, Sequence[int]] | None = None,
     ) -> None:
         self.root = Path(dataset_dir)
         self.noise_names = tuple(str(value) for value in noise_names)
@@ -211,6 +304,9 @@ class Phase3GSequenceDataset(Dataset):
         self.samples_per_epoch = int(samples_per_epoch); self.block_size = int(block_size)
         self.synthesis_enabled = bool(synthesis_enabled)
         self.switch_probability = float(switch_probability); self.seed = int(seed); self.epoch = 0
+        if neighbor_policy not in {NEIGHBOR_POLICY_SINGLE, NEIGHBOR_POLICY_E10A}:
+            raise ValueError(f"Unsupported Phase-3G neighbor policy: {neighbor_policy}")
+        self.neighbor_policy = str(neighbor_policy)
         all_paths = np.load(self.root / "sh.npy", allow_pickle=False, mmap_mode="r").T
         self.paths = np.asarray(all_paths[list(self.train_paths)], dtype=np.float32).copy()
         self.index_to_local = {path: position for position, path in enumerate(self.train_paths)}
@@ -222,6 +318,20 @@ class Phase3GSequenceDataset(Dataset):
             for raw in self.raw_files for path in self.train_paths
         }
         self.nearest = self._nearest_paths()
+        self.neighbor_table: dict[int, tuple[int, ...]] | None = None
+        if self.neighbor_policy == NEIGHBOR_POLICY_E10A:
+            if neighbor_table is None or set(int(value) for value in neighbor_table) != set(self.train_paths):
+                raise ValueError("E10-A requires a frozen neighbor row for every retained path.")
+            normalized = {
+                int(first): tuple(int(second) for second in values)
+                for first, values in neighbor_table.items()
+            }
+            for first, values in normalized.items():
+                if len(values) != 3 or len(set(values)) != 3:
+                    raise ValueError("Every E10-A path must have exactly three unique neighbors.")
+                if first in values or any(value not in self.train_paths for value in values):
+                    raise ValueError("E10-A neighbors must be retained paths distinct from their source.")
+            self.neighbor_table = normalized
 
     def _nearest_paths(self) -> dict[int, int]:
         result = {}
@@ -258,9 +368,16 @@ class Phase3GSequenceDataset(Dataset):
         if value < 0.90: return "extrapolate"
         return "augment"
 
+    def _select_second(self, first: int, kind: str, rng: np.random.Generator) -> int:
+        if kind in {"interpolate", "extrapolate"} and self.neighbor_policy == NEIGHBOR_POLICY_E10A:
+            assert self.neighbor_table is not None
+            return int(rng.choice(self.neighbor_table[first]))
+        return int(self.nearest[first])
+
     def _environment(self, rng: np.random.Generator, raw: Path) -> dict[str, Any]:
-        first = int(rng.choice(self.train_paths)); second = self.nearest[first]
+        first = int(rng.choice(self.train_paths))
         kind = self._sample_kind(rng)
+        second = self._select_second(first, kind, rng)
         path_a = self.paths[self.index_to_local[first]].copy()
         d_a = self._read(self.expected[(raw.name, first)], self._start)
         endpoints = [first]

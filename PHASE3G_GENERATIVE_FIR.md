@@ -61,4 +61,7 @@ LOPO 每折会从训练 disturbance、次级路、专家、创新模板、字典
 runs/phase3g_suite_seed2027/P3G-E2/checkpoints/best_phase3g_selection.pt
 ```
 
-正式提交包：`phase3g_submission_final_seed2027_v2`；已剔除训练期 artifact/字典初始化辅助方法。
+正式提交包已通过 Phase 4R 等价运行时加固升级为
+`phase3g_submission_final_seed2027_v3`；已剔除训练期 artifact/字典初始化辅助方法。
+权重和逐点输出与 v2 完全一致，十次完整公开闭环 RTF 的 P50/P95/最大值分别为
+`0.6760/0.7000/0.7082`。

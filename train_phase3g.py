@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 import random
 import time
@@ -19,7 +20,14 @@ from torch.utils.data import DataLoader
 
 from phase3_validation import build_phase3_manifests
 from phase3g_closed_loop import compute_phase3g_loss, rollout_phase3g_closed_loop
-from phase3g_data import Phase3GSequenceDataset, build_phase3g_manifest, save_phase3g_manifest
+from phase3g_data import (
+    NEIGHBOR_POLICY_E10A,
+    NEIGHBOR_POLICY_SINGLE,
+    Phase3GSequenceDataset,
+    build_multispace_neighbor_table,
+    build_phase3g_manifest,
+    save_phase3g_manifest,
+)
 from phase3g_model import GenerativeInnovationFIRController
 from phase3g_validation import (
     evaluate_continuous_path_stress, evaluate_phase3g_development, phase3g_gate,
@@ -32,6 +40,88 @@ DEFAULT_ORACLE="runs/phase3_suite_seed2026_v2/P3-E1/checkpoints/best_phase3_sele
 DEFAULT_TEMPLATE="artifacts/phase3r_innovation_templates.npz"
 DEFAULT_P3R="runs/phase3r_suite_seed2026/P3R-E1c/candidate.pt"
 DEFAULT_ORACLE_SUMMARY="runs/phase3_suite_seed2026_v2/P3-E1/summary.json"
+
+
+def _canonical_sha256(value: dict[str, Any]) -> str:
+    encoded=json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def resolve_e10a_correction(
+    spec_path: str | Path,
+    dataset_dir: str | Path,
+    template_path: str | Path,
+    train_paths: list[int],
+) -> dict[str, Any]:
+    """Validate the frozen E10-A protocol and return its retained-only table."""
+    path=Path(spec_path)
+    spec=json.loads(path.read_text(encoding="utf-8"))
+    if spec.get("status") != "implementation_ready_not_run":
+        raise ValueError("E10-A correction spec must be closed and not yet run.")
+    correction=spec.get("selected_correction", {})
+    if correction.get("experiment_id") != "E10-A":
+        raise ValueError("Only the diagnosed E10-A correction is supported.")
+    closure=spec.get("protocol_closure", {})
+    recorded_hash=closure.get("closure_sha256")
+    closure_payload={key:value for key,value in closure.items() if key != "closure_sha256"}
+    if recorded_hash != _canonical_sha256(closure_payload):
+        raise ValueError("E10-A protocol closure hash is invalid.")
+    dataset_root=Path(dataset_dir)
+    template=Path(template_path)
+    from phase3r_templates import sha256_file
+    expected_inputs=closure["inputs"]
+    if sha256_file(dataset_root/"sh.npy") != expected_inputs["dataset/sh.npy"]:
+        raise ValueError("E10-A secondary-path input hash changed after protocol closure.")
+    if sha256_file(template) != expected_inputs["artifacts/phase3r_innovation_templates.npz"]:
+        raise ValueError("E10-A primary-template input hash changed after protocol closure.")
+
+    paths=[int(value) for value in train_paths]
+    if paths == list(range(8)):
+        serialized=closure["global_neighbor_table"]
+        table_name="global"
+    else:
+        held=[value for value in range(8) if value not in paths]
+        if len(paths) != 7 or len(held) != 1:
+            raise ValueError("E10-A training paths must be all eight or one strict LOPO subset.")
+        serialized=closure["fold_neighbor_tables"][str(held[0]+1)]
+        table_name=f"fold_{held[0]+1}"
+    table={int(first)-1:tuple(int(second)-1 for second in values) for first,values in serialized.items()}
+    if set(table) != set(paths):
+        raise ValueError("E10-A neighbor table does not match the retained training paths.")
+
+    with np.load(template, allow_pickle=False) as artifact:
+        secondary=np.load(dataset_root/"sh.npy", allow_pickle=False).T[:8]
+        recomputed,_=build_multispace_neighbor_table(
+            secondary, artifact["primary_real"], artifact["primary_imag"], artifact["band_mask"],
+            paths, neighbor_count=3,
+        )
+    if table != recomputed:
+        raise ValueError("E10-A frozen neighbor table does not match its registered algorithm.")
+    return {
+        "spec_path":str(path), "spec_sha256":sha256_file(path),
+        "experiment_id":"E10-A", "table_name":table_name,
+        "closure_sha256":recorded_hash, "neighbor_table":table,
+        "frozen_training":spec["frozen_training"],
+    }
+
+
+def validate_e10a_training_config(
+    correction: dict[str, Any], args: argparse.Namespace, epochs: int, samples: int,
+) -> None:
+    frozen=correction["frozen_training"]
+    checks={
+        "batch_size":(args.batch_size, int(frozen["batch_size"])),
+        "gradient_accumulation":(args.gradient_accumulation, int(frozen["gradient_accumulation"])),
+        "samples_per_epoch":(samples, int(frozen["samples_per_epoch"])),
+        "hidden_size":(args.hidden_size, int(frozen["hidden_size"])),
+        "latent_size":(args.latent_size, int(frozen["latent_size"])),
+        "generator_lr":(args.generator_lr, float(frozen["generator_lr"])),
+        "dictionary_lr":(args.dictionary_lr, float(frozen["dictionary_lr"])),
+        "epochs":(epochs, int(frozen["warmup_epochs"] if args.stage == "warmup" else frozen["generalize_epochs"])),
+    }
+    mismatches={key:{"actual":actual,"expected":expected} for key,(actual,expected) in checks.items() if actual != expected}
+    if mismatches:
+        raise ValueError(f"E10-A must preserve the frozen training configuration: {mismatches}")
 
 
 def set_seed(seed: int) -> None:
@@ -155,6 +245,7 @@ def main() -> None:
     parser.add_argument("--checkpoint", default=None)
     parser.add_argument("--p3r-checkpoint", default=DEFAULT_P3R)
     parser.add_argument("--oracle-summary", default=DEFAULT_ORACLE_SUMMARY)
+    parser.add_argument("--correction-spec", default=None)
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--train-paths", type=int, nargs="+", default=list(range(8)))
     parser.add_argument("--hidden-size", type=int, default=32)
@@ -184,6 +275,11 @@ def main() -> None:
     root.mkdir(parents=True, exist_ok=False); checkpoints=root/"checkpoints"; checkpoints.mkdir()
     source_config=json.loads((Path(args.oracle_checkpoint).parents[1]/"config.json").read_text(encoding="utf-8"))
     train_noises=source_config["train_noises"]
+    correction=(resolve_e10a_correction(
+        args.correction_spec, args.dataset_dir, args.template, args.train_paths,
+    ) if args.correction_spec else None)
+    if correction:
+        validate_e10a_training_config(correction, args, epochs, samples)
     if args.stage == "warmup":
         full=GenerativeInnovationFIRController.from_artifacts(
             args.oracle_checkpoint, args.template, hidden_size=args.hidden_size,
@@ -195,15 +291,27 @@ def main() -> None:
         model=load_phase3g(args.checkpoint, device)
         if model.hidden_size != args.hidden_size or model.latent_size != args.latent_size:
             raise ValueError("Capacity changes require a fresh warmup stage.")
+    neighbor_policy=(NEIGHBOR_POLICY_E10A if correction and args.stage == "generalize" else NEIGHBOR_POLICY_SINGLE)
+    neighbor_table=(correction["neighbor_table"] if neighbor_policy == NEIGHBOR_POLICY_E10A else None)
     dataset=Phase3GSequenceDataset(
         args.dataset_dir, train_noises, train_paths=args.train_paths, samples_per_epoch=samples,
         block_size=model.block_size, synthesis_enabled=args.stage == "generalize",
         switch_probability=0.25 if args.stage == "generalize" else 0.0, seed=args.seed,
+        neighbor_policy=neighbor_policy, neighbor_table=neighbor_table,
     )
     generator=torch.Generator().manual_seed(args.seed)
     loader=DataLoader(dataset, batch_size=args.batch_size, shuffle=True, generator=generator,
                       num_workers=args.num_workers, pin_memory=device.type == "cuda")
-    synthesis_manifest=build_phase3g_manifest(args.dataset_dir, train_noises, path_indices=args.train_paths, seed=args.seed)
+    correction_metadata=(None if correction is None else {
+        "experiment_id":correction["experiment_id"], "spec_path":correction["spec_path"],
+        "spec_sha256":correction["spec_sha256"], "closure_sha256":correction["closure_sha256"],
+        "table_name":correction["table_name"], "active_in_this_stage":neighbor_policy == NEIGHBOR_POLICY_E10A,
+    })
+    synthesis_manifest=build_phase3g_manifest(
+        args.dataset_dir, train_noises, path_indices=args.train_paths, seed=args.seed,
+        neighbor_policy=neighbor_policy, neighbor_table=neighbor_table,
+        correction_metadata=correction_metadata,
+    )
     save_phase3g_manifest(root/"synthesis_manifest.json", synthesis_manifest)
     manifests=build_phase3_manifests(args.dataset_dir, args.seed)
     manifests["development"]["path_indices_zero_based"]=list(args.train_paths)
@@ -219,6 +327,7 @@ def main() -> None:
         "train_noises":train_noises, "resolved_device":str(device),
         "model_config":model.model_config, "complexity":model.get_complexity(),
         "paths_policy":"only supplied subset of paths 1-8; paths 9/10 final-only",
+        "correction":correction_metadata,
     })
     save_json(root/"config.json", config); save_json(root/"p1_baseline.json", p1_baseline)
     calibrate_features(model, loader, device, args.calibration_batches)

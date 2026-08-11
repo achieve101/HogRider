@@ -372,6 +372,8 @@ Phase 3G 保留 P3R-E1c 的显式创新证据，但不再假设未建模路径�
 最差路径和路径 10 均为 `3.9775 dB`；正式模型已从 P1-E2 升级到
 `runs/phase3g_suite_seed2027/P3G-E2/checkpoints/best_phase3g_selection.pt`。Participant Kit
 提交检查 RTF 为 0.695，完整公开闭环 `S=25.1484`、`R=0.1373`、RTF 0.959。
+Phase 4R 随后移除了包装器逐采样重复进入的 PyTorch 推理上下文；v3 与 v2 的
+168,000 点输出逐点完全一致，十次完整公开闭环 RTF 最大值降至 `0.7082`。
 
 设计、命令和当前结果见 [`PHASE3G_GENERATIVE_FIR.md`](PHASE3G_GENERATIVE_FIR.md)。
 

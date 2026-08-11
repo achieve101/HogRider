@@ -1,0 +1,677 @@
+{
+  "schema_version": 1,
+  "phase": "4R-followup",
+  "status": "implementation_ready_not_run",
+  "created_from_diagnosis": "artifacts/phase4r_worst_path_diagnosis.json",
+  "selected_root_cause": "training_coverage_or_dictionary",
+  "selected_correction": {
+    "experiment_id": "E10-A",
+    "name": "coverage_balanced_three_neighbor_synthesis",
+    "single_change": "Replace second=self.nearest[first] with uniform sampling over the three closest retained paths under the mean rank of aligned-IR, 50-8000 Hz secondary-response, and primary-template distances.",
+    "frozen_hyperparameters": {
+      "neighbor_count": 3,
+      "neighbor_probability": "uniform",
+      "distance": "mean within-fold rank of aligned IR, complex S response, and complex P template",
+      "synthesis_probabilities": {
+        "measured": 0.5,
+        "interpolate": 0.3,
+        "extrapolate": 0.1,
+        "augment": 0.1
+      },
+      "interpolation_amount": [
+        0.2,
+        0.8
+      ],
+      "extrapolation_amount": [
+        0.05,
+        0.2
+      ],
+      "candidate_mask_probabilities": {
+        "none": 0.4,
+        "one_endpoint": 0.3,
+        "two_endpoints": 0.3
+      },
+      "all_other_model_loss_and_runtime_settings": "unchanged"
+    },
+    "ablation_control": "current deterministic single-nearest-neighbor sampler"
+  },
+  "data_policy": {
+    "lopo_folds": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "fold_training_paths": "paths 1-8 excluding that fold's held-out path",
+    "held_out_disturbance_secondary_expert_template_oracle_use": "forbidden during candidate training and selection",
+    "sealed_paths_9_10": "forbidden",
+    "global_training_paths": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ]
+  },
+  "frozen_training": {
+    "lopo_seed": 2026,
+    "global_seeds": [
+      2026,
+      2027,
+      2028
+    ],
+    "warmup_epochs": 5,
+    "generalize_epochs": 15,
+    "samples_per_epoch": 128,
+    "batch_size": 8,
+    "gradient_accumulation": 1,
+    "generator_lr": 0.0003,
+    "dictionary_lr": 1e-05,
+    "hidden_size": 32,
+    "latent_size": 16,
+    "fir_length": 2048,
+    "innovation_history": 4096,
+    "block_size": 240
+  },
+  "input_sha256": {
+    "runs/phase3g_suite_seed2026_rerun1/P3G-LOPO-rerun1/lopo_summary.json": "e9bb8acfd5049d6eb3268ea175b62b6583d58729111ac71e37450954a5401028",
+    "artifacts/phase3r_innovation_templates.npz": "df93ea912ff1bcf5e3ff2dbc2643c14c6b981ae413e00f27198ee22998d3928b",
+    "runs/phase3_suite_seed2026_v2/P3-E1/checkpoints/best_phase3_selection.pt": "403d88b5402c62bb44a37d14de4c720dd772fa3cac98aba2d8de477b0218a174",
+    "dataset/sh.npy": "e06774bfaad92ab2b8d624e7394966f4851912e3fbbd84483fdc4b3555389604",
+    "artifacts/phase3g_formal_model.json": "e130d36631aef18df82bdc9baa8c292d91cc90d53715375a14da0f7b9d36b127",
+    "phase3g_submission_final_seed2027_v3/weights.pt": "7544a871d07dccc89bb76197d81f9218d1aada01abf32183c9d78368cc399c0a",
+    "dist/CCFANC.zip": "2bc1ac57d9d98a089bcaec2cfc731df8d62dab735344d8aec54b9f790286ee84"
+  },
+  "commands_after_the_selected_change_is_implemented": [
+    "python phase3g_lopo.py --output-root runs/phase4r_e10a_seed2026_lopo --device cuda --seed 2026 --hidden-size 32 --latent-size 16 --batch-size 8 --gradient-accumulation 1 --correction-spec artifacts/phase4r_preregistered_correction.json",
+    "python run_phase3g_experiments.py --seeds 2026 2027 2028 --correction-spec artifacts/phase4r_preregistered_correction.json",
+    "python phase3g_final_evaluation.py --correction-spec artifacts/phase4r_preregistered_correction.json",
+    "python benchmark_phase4r_runtime.py --runs 10 --samples 168000"
+  ],
+  "acceptance": {
+    "path8_strict_lopo_primary_gain_db_at_least": -0.5,
+    "path8_strict_lopo_rebound_db_at_most": 4.647460707863544,
+    "improve_at_least_two_of_three_worst_coverage_folds": true,
+    "median_lopo_gain_db_at_least": 0.9112038264082807,
+    "non_degrading_folds_at_least": 6,
+    "known_path_and_public_metrics_regression_tolerance_db": 1e-06,
+    "rtf_all_ten_runs_at_most": 0.8,
+    "formal_upgrade_requires_separate_approval": true
+  },
+  "protocol_closure": {
+    "algorithm_version": 1,
+    "path_numbering": "one_based",
+    "distance_definition": {
+      "aligned_ir": "real-scale NRMSE after direct-arrival alignment",
+      "secondary_response": "real-scale complex NRMSE from 50-8000 Hz at n_fft=4096",
+      "primary_template": "real-scale complex NRMSE on the frozen template band",
+      "neighbor_score": "mean within-source rank across the three distances; ties by path number",
+      "neighbor_selection": "three smallest scores; uniform draw only for interpolate/extrapolate"
+    },
+    "fold_neighbor_tables": {
+      "1": {
+        "2": [
+          3,
+          4,
+          5
+        ],
+        "3": [
+          5,
+          2,
+          4
+        ],
+        "4": [
+          2,
+          8,
+          3
+        ],
+        "5": [
+          3,
+          2,
+          4
+        ],
+        "6": [
+          8,
+          2,
+          4
+        ],
+        "7": [
+          6,
+          5,
+          2
+        ],
+        "8": [
+          4,
+          6,
+          2
+        ]
+      },
+      "2": {
+        "1": [
+          8,
+          4,
+          5
+        ],
+        "3": [
+          5,
+          4,
+          8
+        ],
+        "4": [
+          8,
+          3,
+          5
+        ],
+        "5": [
+          3,
+          4,
+          8
+        ],
+        "6": [
+          8,
+          1,
+          3
+        ],
+        "7": [
+          6,
+          5,
+          3
+        ],
+        "8": [
+          1,
+          4,
+          6
+        ]
+      },
+      "3": {
+        "1": [
+          8,
+          4,
+          6
+        ],
+        "2": [
+          4,
+          5,
+          6
+        ],
+        "4": [
+          2,
+          8,
+          5
+        ],
+        "5": [
+          2,
+          4,
+          8
+        ],
+        "6": [
+          8,
+          1,
+          2
+        ],
+        "7": [
+          6,
+          5,
+          2
+        ],
+        "8": [
+          1,
+          4,
+          6
+        ]
+      },
+      "4": {
+        "1": [
+          8,
+          5,
+          6
+        ],
+        "2": [
+          3,
+          5,
+          6
+        ],
+        "3": [
+          5,
+          2,
+          8
+        ],
+        "5": [
+          3,
+          2,
+          8
+        ],
+        "6": [
+          8,
+          2,
+          1
+        ],
+        "7": [
+          6,
+          5,
+          2
+        ],
+        "8": [
+          1,
+          6,
+          2
+        ]
+      },
+      "5": {
+        "1": [
+          8,
+          4,
+          6
+        ],
+        "2": [
+          3,
+          4,
+          6
+        ],
+        "3": [
+          2,
+          4,
+          8
+        ],
+        "4": [
+          2,
+          8,
+          3
+        ],
+        "6": [
+          8,
+          1,
+          2
+        ],
+        "7": [
+          6,
+          2,
+          3
+        ],
+        "8": [
+          1,
+          4,
+          6
+        ]
+      },
+      "6": {
+        "1": [
+          4,
+          8,
+          5
+        ],
+        "2": [
+          3,
+          4,
+          5
+        ],
+        "3": [
+          5,
+          2,
+          4
+        ],
+        "4": [
+          2,
+          8,
+          3
+        ],
+        "5": [
+          3,
+          2,
+          4
+        ],
+        "7": [
+          2,
+          5,
+          3
+        ],
+        "8": [
+          4,
+          1,
+          2
+        ]
+      },
+      "7": {
+        "1": [
+          8,
+          4,
+          6
+        ],
+        "2": [
+          3,
+          4,
+          5
+        ],
+        "3": [
+          5,
+          2,
+          4
+        ],
+        "4": [
+          2,
+          8,
+          3
+        ],
+        "5": [
+          3,
+          2,
+          4
+        ],
+        "6": [
+          8,
+          2,
+          1
+        ],
+        "8": [
+          1,
+          4,
+          6
+        ]
+      },
+      "8": {
+        "1": [
+          4,
+          6,
+          5
+        ],
+        "2": [
+          3,
+          4,
+          5
+        ],
+        "3": [
+          5,
+          2,
+          4
+        ],
+        "4": [
+          2,
+          3,
+          5
+        ],
+        "5": [
+          3,
+          2,
+          4
+        ],
+        "6": [
+          1,
+          2,
+          4
+        ],
+        "7": [
+          6,
+          5,
+          2
+        ]
+      }
+    },
+    "global_neighbor_table": {
+      "1": [
+        8,
+        4,
+        6
+      ],
+      "2": [
+        3,
+        4,
+        5
+      ],
+      "3": [
+        5,
+        2,
+        4
+      ],
+      "4": [
+        2,
+        8,
+        3
+      ],
+      "5": [
+        3,
+        2,
+        4
+      ],
+      "6": [
+        8,
+        2,
+        1
+      ],
+      "7": [
+        6,
+        5,
+        2
+      ],
+      "8": [
+        1,
+        4,
+        6
+      ]
+    },
+    "held_out_coverage": {
+      "1": {
+        "nearest_distances": {
+          "aligned_ir_nrmse": 0.4285997961382038,
+          "secondary_response_nrmse": 0.3496328606001309,
+          "primary_template_nrmse": 0.38798574276229325
+        },
+        "distance_ranks": {
+          "aligned_ir_nrmse": 7,
+          "secondary_response_nrmse": 6,
+          "primary_template_nrmse": 7
+        },
+        "mean_distance_rank": 6.666666666666667
+      },
+      "2": {
+        "nearest_distances": {
+          "aligned_ir_nrmse": 0.32794507893122576,
+          "secondary_response_nrmse": 0.23223782494857087,
+          "primary_template_nrmse": 0.29998245880443947
+        },
+        "distance_ranks": {
+          "aligned_ir_nrmse": 2,
+          "secondary_response_nrmse": 2,
+          "primary_template_nrmse": 6
+        },
+        "mean_distance_rank": 3.3333333333333335
+      },
+      "3": {
+        "nearest_distances": {
+          "aligned_ir_nrmse": 0.3325002115838392,
+          "secondary_response_nrmse": 0.2520549277543114,
+          "primary_template_nrmse": 0.25551839214256084
+        },
+        "distance_ranks": {
+          "aligned_ir_nrmse": 3,
+          "secondary_response_nrmse": 4,
+          "primary_template_nrmse": 1
+        },
+        "mean_distance_rank": 2.6666666666666665
+      },
+      "4": {
+        "nearest_distances": {
+          "aligned_ir_nrmse": 0.3926715469897028,
+          "secondary_response_nrmse": 0.23223782494857084,
+          "primary_template_nrmse": 0.27853952835122436
+        },
+        "distance_ranks": {
+          "aligned_ir_nrmse": 6,
+          "secondary_response_nrmse": 1,
+          "primary_template_nrmse": 4
+        },
+        "mean_distance_rank": 3.6666666666666665
+      },
+      "5": {
+        "nearest_distances": {
+          "aligned_ir_nrmse": 0.3279450789312255,
+          "secondary_response_nrmse": 0.2520549277543113,
+          "primary_template_nrmse": 0.2555183921425609
+        },
+        "distance_ranks": {
+          "aligned_ir_nrmse": 1,
+          "secondary_response_nrmse": 3,
+          "primary_template_nrmse": 2
+        },
+        "mean_distance_rank": 2.0
+      },
+      "6": {
+        "nearest_distances": {
+          "aligned_ir_nrmse": 0.3830026008336826,
+          "secondary_response_nrmse": 0.3825115943760739,
+          "primary_template_nrmse": 0.29998245880443897
+        },
+        "distance_ranks": {
+          "aligned_ir_nrmse": 5,
+          "secondary_response_nrmse": 7,
+          "primary_template_nrmse": 5
+        },
+        "mean_distance_rank": 5.666666666666667
+      },
+      "7": {
+        "nearest_distances": {
+          "aligned_ir_nrmse": 0.7653787182506608,
+          "secondary_response_nrmse": 0.7837031587701476,
+          "primary_template_nrmse": 0.7589832190016339
+        },
+        "distance_ranks": {
+          "aligned_ir_nrmse": 8,
+          "secondary_response_nrmse": 8,
+          "primary_template_nrmse": 8
+        },
+        "mean_distance_rank": 8.0
+      },
+      "8": {
+        "nearest_distances": {
+          "aligned_ir_nrmse": 0.3830026008336816,
+          "secondary_response_nrmse": 0.3496328606001307,
+          "primary_template_nrmse": 0.2717811574407503
+        },
+        "distance_ranks": {
+          "aligned_ir_nrmse": 4,
+          "secondary_response_nrmse": 5,
+          "primary_template_nrmse": 3
+        },
+        "mean_distance_rank": 4.0
+      }
+    },
+    "worst_three_coverage_folds": [
+      7,
+      1,
+      6
+    ],
+    "inputs": {
+      "dataset/sh.npy": "e06774bfaad92ab2b8d624e7394966f4851912e3fbbd84483fdc4b3555389604",
+      "artifacts/phase3r_innovation_templates.npz": "df93ea912ff1bcf5e3ff2dbc2643c14c6b981ae413e00f27198ee22998d3928b"
+    },
+    "closure_sha256": "746cd380282e61c9be86b4936fd08e030da4404868433b8c0a00a370a9032780"
+  },
+  "baseline_training_audit": {
+    "all_folds_equal": true,
+    "resolved_training": {
+      "batch_size": 8,
+      "gradient_accumulation": 1,
+      "samples_per_epoch": 128,
+      "hidden_size": 32,
+      "latent_size": 16,
+      "generator_lr": 0.0003,
+      "dictionary_lr": 1e-05
+    },
+    "per_fold": [
+      {
+        "held_out_path": 1,
+        "batch_size": 8,
+        "gradient_accumulation": 1,
+        "samples_per_epoch": 128,
+        "hidden_size": 32,
+        "latent_size": 16,
+        "generator_lr": 0.0003,
+        "dictionary_lr": 1e-05
+      },
+      {
+        "held_out_path": 2,
+        "batch_size": 8,
+        "gradient_accumulation": 1,
+        "samples_per_epoch": 128,
+        "hidden_size": 32,
+        "latent_size": 16,
+        "generator_lr": 0.0003,
+        "dictionary_lr": 1e-05
+      },
+      {
+        "held_out_path": 3,
+        "batch_size": 8,
+        "gradient_accumulation": 1,
+        "samples_per_epoch": 128,
+        "hidden_size": 32,
+        "latent_size": 16,
+        "generator_lr": 0.0003,
+        "dictionary_lr": 1e-05
+      },
+      {
+        "held_out_path": 4,
+        "batch_size": 8,
+        "gradient_accumulation": 1,
+        "samples_per_epoch": 128,
+        "hidden_size": 32,
+        "latent_size": 16,
+        "generator_lr": 0.0003,
+        "dictionary_lr": 1e-05
+      },
+      {
+        "held_out_path": 5,
+        "batch_size": 8,
+        "gradient_accumulation": 1,
+        "samples_per_epoch": 128,
+        "hidden_size": 32,
+        "latent_size": 16,
+        "generator_lr": 0.0003,
+        "dictionary_lr": 1e-05
+      },
+      {
+        "held_out_path": 6,
+        "batch_size": 8,
+        "gradient_accumulation": 1,
+        "samples_per_epoch": 128,
+        "hidden_size": 32,
+        "latent_size": 16,
+        "generator_lr": 0.0003,
+        "dictionary_lr": 1e-05
+      },
+      {
+        "held_out_path": 7,
+        "batch_size": 8,
+        "gradient_accumulation": 1,
+        "samples_per_epoch": 128,
+        "hidden_size": 32,
+        "latent_size": 16,
+        "generator_lr": 0.0003,
+        "dictionary_lr": 1e-05
+      },
+      {
+        "held_out_path": 8,
+        "batch_size": 8,
+        "gradient_accumulation": 1,
+        "samples_per_epoch": 128,
+        "hidden_size": 32,
+        "latent_size": 16,
+        "generator_lr": 0.0003,
+        "dictionary_lr": 1e-05
+      }
+    ]
+  },
+  "protocol_corrections_before_training": [
+    {
+      "field": "frozen_training.batch_size/gradient_accumulation",
+      "from": "1/8",
+      "to": "8/1",
+      "reason": "match all eight frozen baseline LOPO configs and preserve a single-factor E10-A comparison"
+    }
+  ]
+}

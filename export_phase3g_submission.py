@@ -41,7 +41,7 @@ def main() -> None:
     (output/"requirements.txt").write_text("# Uses only organizer-provided PyTorch and NumPy.\n", encoding="utf-8")
     (output/"config.json").write_text(json.dumps({
         "phase":"3G", "formal_upgrade":bool(args.formal_upgrade),
-        "source_checkpoint":str(checkpoint_path), "model_config":checkpoint["model_config"],
+        "weights_file":"weights.pt", "model_config":checkpoint["model_config"],
         "inference_policy":"frozen state_dict; only hidden activations and caches change",
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     (output/"README.md").write_text(
