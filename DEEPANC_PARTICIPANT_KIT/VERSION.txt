@@ -1,0 +1,6 @@
+DEEPANC Participant Kit 1.5.0
+Public submission interface: 48 kHz sample-by-sample
+Scoring protocol described by the competition: version 6
+Per scene: 0.5 s initialization + 3.0 s acoustic scoring
+Scoring aggregation: six 0.5 s windows, equal mean in dB
+Archive layout: TeamID/Task2/

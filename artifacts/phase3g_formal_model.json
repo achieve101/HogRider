@@ -1,0 +1,21 @@
+{
+  "phase": "3G",
+  "status": "formal_upgrade_passed",
+  "selected_seed": 2027,
+  "selection_policy": "highest development D; final paths not used for seed selection",
+  "checkpoint": "runs/phase3g_suite_seed2027/P3G-E2/checkpoints/best_phase3g_selection.pt",
+  "submission_package": "phase3g_submission_final_seed2027_v2",
+  "public_demo_report": "runs/phase3g_final_public_demo_seed2027_v2.json",
+  "final_evaluation": "runs/phase3g_final_evaluation.json",
+  "lopo_summary": "runs/phase3g_suite_seed2026_rerun1/P3G-LOPO-rerun1/lopo_summary.json",
+  "parameter_count": 41552,
+  "global_metrics": {
+    "primary_score_db": 17.95846681425745,
+    "rebound_score_db": 1.687030916770508,
+    "composite": 12.064817494949061,
+    "worst_path_primary_db": 3.9775018906538215,
+    "path9_primary_db": 15.293780370268168,
+    "path10_primary_db": 3.9775018906538215,
+    "cpu_real_time_factor": 0.6070060619049834
+  }
+}

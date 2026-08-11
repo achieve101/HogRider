@@ -1,0 +1,32 @@
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Official dataset is downloaded separately and is far too large for GitHub.
+dataset/
+
+# Training runs, checkpoints, logs, and local experiment outputs
+runs/
+tmp/
+output/
+dist/
+*.log
+
+# Locally generated evaluation media
+Scene_*_eval_recording.wav
+Scene_*_octave_analysis.png
+Scene_*_spectrogram.png
+
+# Editor and OS metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Archives are generated delivery artifacts, not source files.
+*.zip

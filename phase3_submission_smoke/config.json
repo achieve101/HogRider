@@ -1,0 +1,12 @@
+{
+  "phase": 3,
+  "weights_file": "weights.pt",
+  "model_config": {
+    "num_experts": 8,
+    "fir_length": 2048,
+    "hidden_size": 24,
+    "block_size": 240,
+    "alpha_update": 0.2,
+    "output_limit": 0.98
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "phase": "3G",
+  "formal_upgrade": true,
+  "weights_file": "weights.pt",
+  "model_config": {
+    "num_experts": 8,
+    "fir_length": 2048,
+    "path_length": 1967,
+    "n_fft": 4096,
+    "block_size": 240,
+    "hidden_size": 32,
+    "latent_size": 16,
+    "ewma_lambda": 0.8,
+    "temperature": 0.2,
+    "alpha_update": 0.2,
+    "latent_update": 0.2,
+    "output_limit": 0.98
+  },
+  "inference_policy": "frozen state_dict; only hidden activations and caches change"
+}

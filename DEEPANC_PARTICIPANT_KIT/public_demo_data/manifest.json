@@ -1,0 +1,25 @@
+{
+  "format_version": 1,
+  "scene_id": "vehicle_public_scene_01",
+  "description": "赛题二公开演示场景：固定15秒车载参考信号、对应期望噪声和公开1号次级路径。",
+  "is_final_test_set": false,
+  "sample_rate_hz": 48000,
+  "channels": 1,
+  "duration_seconds": 15.0,
+  "secondary_path_id": 1,
+  "secondary_path_taps": 1967,
+  "files": {
+    "reference.wav": {
+      "role": "reference_signal_x",
+      "sha256": "439ebfada9f09c00abf34512b66308786bbd05c5f640b971a3fcd91fe358cb91"
+    },
+    "disturbance.wav": {
+      "role": "desired_noise_d",
+      "sha256": "68d362dabecb8dc1628c17eb8da3959ee28971e013653e6ea89613ef2ba96852"
+    },
+    "secondary_path.npy": {
+      "role": "secondary_path_s",
+      "sha256": "87a6750ed0d1f706a5658b9b90d9a833a068230669ef183bdf31fdb6db19d8a4"
+    }
+  }
+}
