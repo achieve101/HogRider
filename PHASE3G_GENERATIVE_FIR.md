@@ -64,4 +64,6 @@ runs/phase3g_suite_seed2027/P3G-E2/checkpoints/best_phase3g_selection.pt
 正式提交包已通过 Phase 4R 等价运行时加固升级为
 `phase3g_submission_final_seed2027_v3`；已剔除训练期 artifact/字典初始化辅助方法。
 权重和逐点输出与 v2 完全一致，十次完整公开闭环 RTF 的 P50/P95/最大值分别为
-`0.6760/0.7000/0.7082`。
+`0.6760/0.7000/0.7082`。Phase 4R 最差路径诊断随后完成，E10-A 三邻居覆盖修正虽将
+Path 8 严格 LOPO 主增益改善 `0.5643 dB`，但八折中位增益降至 `0.6638 dB`、仅
+5/8 不退化，未通过预注册门槛。因此 E10-A 未替换本正式 v3。
