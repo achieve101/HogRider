@@ -57,8 +57,10 @@ Phase 4R E09-A 删除了提交包装器逐采样重复创建的 `torch.inference
 增益降至 `0.6638 dB`，仅 5/8 不退化，Path 7/1/6 均未改善。E10-A 未通过预注册
 门槛，未运行三种子、未修改正式 v3、ZIP 或正式指标。
 
-Phase 0 的操作说明保留在 [PHASE0_STRONG_BASELINE.md](PHASE0_STRONG_BASELINE.md)，
-Phase 1 的实现与运行说明见 [PHASE1_V6.md](PHASE1_V6.md)，完整后续路线见
+Phase 0 的操作说明保留在
+[PHASE0_STRONG_BASELINE.md](legacy_models/phase0_phase1/PHASE0_STRONG_BASELINE.md)，
+Phase 1 的实现与运行说明见
+[PHASE1_V6.md](legacy_models/phase0_phase1/PHASE1_V6.md)，完整后续路线见
 [MODEL_IMPROVEMENT_ROADMAP.md](MODEL_IMPROVEMENT_ROADMAP.md)。
 
 ---
@@ -149,7 +151,7 @@ Phase 0 已修正为：
 
 - [dataset.py](dataset.py)：数据解析、配对验证、虚拟 epoch 和测试拼接；
 - [train.py](legacy_models/phase0_phase1/train.py)：配置、随机种子、日志、周期验证、checkpoint 和结果图；
-- [PHASE0_STRONG_BASELINE.md](PHASE0_STRONG_BASELINE.md)：Phase 0 运行说明。
+- [PHASE0_STRONG_BASELINE.md](legacy_models/phase0_phase1/PHASE0_STRONG_BASELINE.md)：Phase 0 运行说明。
 
 ---
 
@@ -417,7 +419,7 @@ C = 0.7 × S - 0.3 × R
 - [phase1_validation.py](phase1_validation.py)：官方 scorer 调用和指标聚合；
 - [train_phase1.py](legacy_models/phase0_phase1/train_phase1.py)：Phase 1 微调、早停、日志和 checkpoint；
 - [run_phase1_experiments.py](legacy_models/phase0_phase1/run_phase1_experiments.py)：E0/E1/E2/条件 E3 编排；
-- [PHASE1_V6.md](PHASE1_V6.md)：运行说明；
+- [PHASE1_V6.md](legacy_models/phase0_phase1/PHASE1_V6.md)：运行说明；
 - `tests/test_v6_metrics.py`、`tests/test_phase1_data.py`：回归测试。
 
 每次训练保存：
@@ -671,7 +673,7 @@ runs/phase1_suite_seed2026/P1-E2/checkpoints/best_official_composite.pt
 - 正式套件：`runs/phase2_suite_seed2026/`
 - 套件结论：`runs/phase2_suite_seed2026/suite_summary.json`
 - E0/E1/E2/E3 各自配置、manifest、history、summary 和 checkpoint 均保存在对应目录；
-- 实现与运行说明：`PHASE2_PATH_ROBUSTNESS.md`。
+- 实现与运行说明：`legacy_models/phase2/PHASE2_PATH_ROBUSTNESS.md`。
 
 ## 6. Batch size 基准与最终决定
 
@@ -770,7 +772,7 @@ effective_batch_size  = 8
 ### 套件汇总
 
 - [suite_summary.json](runs/phase1_suite_seed2026/suite_summary.json)：最终选择 P1-E2；
-- [PHASE1_V6.md](PHASE1_V6.md)：运行和复现说明。
+- [PHASE1_V6.md](legacy_models/phase0_phase1/PHASE1_V6.md)：运行和复现说明。
 
 ---
 
@@ -896,7 +898,7 @@ Phase 3 **未通过**。oracle 结果排除了 FIR 专家容量不足这一解�
 
 正式套件位于 `runs/phase3_suite_seed2026_v2/`，汇总见
 `runs/phase3_suite_seed2026_v2/suite_summary.json`，实现说明见
-`PHASE3_FEEDBACK_FIR.md`。
+`legacy_models/phase3/PHASE3_FEEDBACK_FIR.md`。
 
 ---
 
@@ -1105,7 +1107,7 @@ E10-A 保持模型、损失和训练参数不变，只将 interpolate/extrapolat
 - hidden 24/32 门控均未通过开发门槛，路由准确率仅 11.91%/21.51%；
 - 按停止规则未运行联合微调、LOPO、三种子和路径 9/10 最终评估；
 - Phase 3 记录为未通过，正式 checkpoint 保留 P1-E2；
-- 详细说明见 `PHASE3_FEEDBACK_FIR.md`。
+- 详细说明见 `legacy_models/phase3/PHASE3_FEEDBACK_FIR.md`。
 
 ### 2026-08-08：Phase 2 路径鲁棒训练与正式结论
 
@@ -1124,7 +1126,7 @@ E10-A 保持模型、损失和训练参数不变，只将 interpolate/extrapolat
 - E2/E3 最好最差路径仅 0.9822 dB，低于 1.5 dB 停止阈值；
 - 按规则未运行 LOPO/P2-E4，未访问路径 9/10，Phase 2 记录为未通过；
 - 正式 checkpoint 保留 P1-E2，并建议下一步进入带残差反馈的 Phase 3；
-- 详细设计、命令与结论见 `PHASE2_PATH_ROBUSTNESS.md`。
+- 详细设计、命令与结论见 `legacy_models/phase2/PHASE2_PATH_ROBUSTNESS.md`。
 
 ### 2026-08-08：Phase 1 v6 评分对齐实现
 
@@ -1144,7 +1146,7 @@ E10-A 保持模型、损失和训练参数不变，只将 interpolate/extrapolat
 - P1-E2 相对基线主指标提高 4.2109 dB、反弹降低 85.07%、综合分提高 5.9213，
   控制峰值 0.0663，全部硬门槛通过，因此未触发 E3；
 - 当前最差路径主指标仍为 0.9733 dB，留待路径鲁棒阶段解决；
-- 详细运行方法见 `PHASE1_V6.md`。
+- 详细运行方法见 `legacy_models/phase0_phase1/PHASE1_V6.md`。
 
 ### 2026-08-07
 

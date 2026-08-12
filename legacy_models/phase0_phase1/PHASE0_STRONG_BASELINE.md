@@ -1,6 +1,6 @@
 # Phase 0 强基线使用说明
 
-> 本文件侧重 Phase 0 的运行方法。阶段改动、正式实验结果、batch-size 决策及后续模型改进统一记录在 [MODEL_IMPROVEMENT_LOG.md](MODEL_IMPROVEMENT_LOG.md)。
+> 本文件侧重 Phase 0 的运行方法。阶段改动、正式实验结果、batch-size 决策及后续模型改进统一记录在 [MODEL_IMPROVEMENT_LOG.md](../../MODEL_IMPROVEMENT_LOG.md)。
 
 Phase 0 保持 `TimeDomainANC` 网络结构和时域 MSE 目标不变，重点修复训练与实验基础设施，使后续模型改进有可信、可复现的对照。
 

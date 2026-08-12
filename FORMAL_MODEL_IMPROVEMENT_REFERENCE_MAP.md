@@ -48,9 +48,9 @@ W_t=\sum_{i=1}^{8}\alpha_{t,i}W_i+z_tB,
 
 | 原模型问题 | 当前采用的改进 | 主要资料依据 | 本项目的关键改造 | 代码与实验落点 |
 |---|---|---|---|---|
-| 训练目标与官方六窗口、三分之一倍频程、高频反弹不完全一致 | 可微复现官方 v6 指标并据此训练、验证、选模 | Participant Kit v6 是评分真值；Deep ANC 提供端到端监督式 ANC 背景 | 六窗独立去直流和 STFT，官方频带聚合，硬最大反弹，固定 manifest | [v6_metrics.py](v6_metrics.py)、[train_phase1.py](legacy_models/phase0_phase1/train_phase1.py)、[PHASE1_V6.md](PHASE1_V6.md) |
-| 单个 TCN 隐式承担全部路径变化，路径行为难解释 | 建立路径特定的 FIR 专家集合 | Nam & Elliott 的多模型 ANC；GFANC 的预训练固定滤波器组合 | 八个 2048-tap 专家分别针对路径 1～8；专家在正式推理中冻结 | [phase3_model.py](phase3_model.py)、[train_phase3.py](legacy_models/phase3/train_phase3.py)、[PHASE3_FEEDBACK_FIR.md](PHASE3_FEEDBACK_FIR.md) |
-| 10 维统计加 GRU 的路径分类准确率低 | 直接用候选模型的创新误差进行解析路由 | 多模型 ANC；Hu 等人的无附加探测次级路径辨识分析 | 对每个候选计算 `e+S_i*y` 所恢复的扰动与 `P_i*x` 模板之间的归一化谱误差；EWMA 和软权重替代硬分类 | [phase3r_templates.py](phase3r_templates.py)、[phase3r_model.py](phase3r_model.py)、[PHASE3R_INNOVATION_ROUTING.md](PHASE3R_INNOVATION_ROUTING.md) |
+| 训练目标与官方六窗口、三分之一倍频程、高频反弹不完全一致 | 可微复现官方 v6 指标并据此训练、验证、选模 | Participant Kit v6 是评分真值；Deep ANC 提供端到端监督式 ANC 背景 | 六窗独立去直流和 STFT，官方频带聚合，硬最大反弹，固定 manifest | [v6_metrics.py](v6_metrics.py)、[train_phase1.py](legacy_models/phase0_phase1/train_phase1.py)、[PHASE1_V6.md](legacy_models/phase0_phase1/PHASE1_V6.md) |
+| 单个 TCN 隐式承担全部路径变化，路径行为难解释 | 建立路径特定的 FIR 专家集合 | Nam & Elliott 的多模型 ANC；GFANC 的预训练固定滤波器组合 | 八个 2048-tap 专家分别针对路径 1～8；专家在正式推理中冻结 | [phase3_model.py](phase3_model.py)、[train_phase3.py](legacy_models/phase3/train_phase3.py)、[PHASE3_FEEDBACK_FIR.md](legacy_models/phase3/PHASE3_FEEDBACK_FIR.md) |
+| 10 维统计加 GRU 的路径分类准确率低 | 直接用候选模型的创新误差进行解析路由 | 多模型 ANC；Hu 等人的无附加探测次级路径辨识分析 | 对每个候选计算 `e+S_i*y` 所恢复的扰动与 `P_i*x` 模板之间的归一化谱误差；EWMA 和软权重替代硬分类 | [phase3r_templates.py](phase3r_templates.py)、[phase3r_model.py](phase3r_model.py)、[PHASE3R_INNOVATION_ROUTING.md](legacy_models/phase3r/PHASE3R_INNOVATION_ROUTING.md) |
 | 创新路由已可靠，但离散专家的凸组合对未知路径插值和外推不足 | 在专家混合上生成低秩 FIR 残差 | GFANC；Unsupervised-GFANC；E2E-CFG | 不直接生成完整 2048 维控制核，而用 16 维字典残差降低参数量和块更新成本；条件输入改为闭环创新证据 | [phase3g_model.py](phase3g_model.py)、[phase3g_closed_loop.py](phase3g_closed_loop.py) |
 | 只有八条测量路径，连续路径覆盖不足 | 用 DTW 对齐后的插值、受限外推和普通增强构造连续路径训练分布 | Holzmüller & Sontacchi 的次级路径 DTW 插值 | DTW 只用于离线训练数据构造；加入物理边界、确定性回退、端点遮蔽和路径切换 | [phase3g_data.py](phase3g_data.py)、[train_phase3g.py](train_phase3g.py) |
 | 神经控制器容易只记住可见专家 | 候选遮蔽与严格 LOPO | 本项目的泛化验证设计，不声称来自某一篇论文 | 训练时按 `40%/30%/30%` 保留全部、遮蔽一个端点、遮蔽两个端点；LOPO 物理删除留出路径的全部信息 | [phase3g_data.py](phase3g_data.py)、[phase3g_lopo.py](phase3g_lopo.py) |
@@ -262,9 +262,9 @@ P3G: 创新条件 GRU + 低秩残差字典
 ### 5.3 本地资料
 
 - [MODEL_IMPROVEMENT_LOG.md](MODEL_IMPROVEMENT_LOG.md)：各阶段实验、停止规则和正式升级记录；
-- [PHASE1_V6.md](PHASE1_V6.md)：官方 v6 指标对齐；
-- [PHASE3_FEEDBACK_FIR.md](PHASE3_FEEDBACK_FIR.md)：FIR 专家及失败的学习式反馈路由；
-- [PHASE3R_INNOVATION_ROUTING.md](PHASE3R_INNOVATION_ROUTING.md)：创新误差路由修复；
+- [PHASE1_V6.md](legacy_models/phase0_phase1/PHASE1_V6.md)：官方 v6 指标对齐；
+- [PHASE3_FEEDBACK_FIR.md](legacy_models/phase3/PHASE3_FEEDBACK_FIR.md)：FIR 专家及失败的学习式反馈路由；
+- [PHASE3R_INNOVATION_ROUTING.md](legacy_models/phase3r/PHASE3R_INNOVATION_ROUTING.md)：创新误差路由修复；
 - [PHASE3G_GENERATIVE_FIR.md](PHASE3G_GENERATIVE_FIR.md)：当前正式生成式 FIR 模型；
 - [phase3g_formal_model.json](artifacts/phase3g_formal_model.json)：正式 checkpoint 与最终指标；
 - [phase3g_final_evaluation.json](runs/phase3g_final_evaluation.json)：三种子和十路径最终评估；

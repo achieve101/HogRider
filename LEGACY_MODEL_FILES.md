@@ -1,6 +1,7 @@
 # 旧模型代码目录与文件用途
 
-> 当前正式模型是 Phase 3G。本文说明已经退出正式候选的 Phase 0/1、Phase 2、Phase 3 和 Phase 3R 代码放置位置、文件用途及复现方式。
+> 当前正式模型是经过 Phase 4R E09-A 运行时加固的 Phase 3G v3。本文说明已经退出
+> 正式候选的历史代码、专项文档、辅助入口和旧提交包的放置位置及复现方式。
 
 ## 1. 整理原则
 
@@ -18,7 +19,10 @@ legacy_models/
 ├── phase0_phase1/       # 原始 TCN 基线和官方 v6 对齐微调
 ├── phase2/              # 前馈 TCN 的多路径鲁棒训练
 ├── phase3/              # 反馈统计驱动的 FIR 专家实验
-└── phase3r/             # 解析创新误差路由实验
+├── phase3r/             # 解析创新误差路由实验
+├── phase3g/             # 已退出当前工作流的 Phase 3G 辅助入口
+├── submissions/         # 历史 smoke、v1 和 v2 提交产物
+└── evaluation_outputs/  # 旧自定义场景的录音、频谱图和评分说明截图
 ```
 
 这些目录都包含 `__init__.py`，历史入口统一通过 `python -m legacy_models...` 运行。这样能够从项目根目录稳定解析共享模块，同时避免重新把旧脚本散落到根目录。
@@ -34,6 +38,8 @@ legacy_models/
 | [train_phase1.py](legacy_models/phase0_phase1/train_phase1.py) | Phase 1 官方六窗口、三分之一倍频程和反弹对齐训练 | P1-E0/E1/E2/E3 历史入口 |
 | [run_phase1_experiments.py](legacy_models/phase0_phase1/run_phase1_experiments.py) | 顺序运行 Phase 1 有界实验并选择 checkpoint | 历史实验编排 |
 | [evaluate_custom_scenes.py](legacy_models/phase0_phase1/evaluate_custom_scenes.py) | 早期拼接场景和旧版 EvaluationMetrics 可视化 | 仅旧评估参考，不是 v6 选模入口 |
+| [PHASE0_STRONG_BASELINE.md](legacy_models/phase0_phase1/PHASE0_STRONG_BASELINE.md) | Phase 0 操作与复现说明 | 历史专项文档 |
+| [PHASE1_V6.md](legacy_models/phase0_phase1/PHASE1_V6.md) | Phase 1 v6 对齐设计和结果 | 历史专项文档 |
 
 复现示例：
 
@@ -54,6 +60,7 @@ python -m legacy_models.phase0_phase1.evaluate_custom_scenes
 | [phase2_validation.py](legacy_models/phase2/phase2_validation.py) | Phase 2 development/stress/final 隔离验证和门槛 | Phase 2 专属验证 |
 | [run_phase2_experiments.py](legacy_models/phase2/run_phase2_experiments.py) | P2-E0/E1/E2、条件 E3 和可选最终实验编排 | 历史实验编排 |
 | [phase2_lopo.py](legacy_models/phase2/phase2_lopo.py) | 路径 1～8 成对 control/augment LOPO | 历史泛化诊断 |
+| [PHASE2_PATH_ROBUSTNESS.md](legacy_models/phase2/PHASE2_PATH_ROBUSTNESS.md) | Phase 2 路径鲁棒训练方案与结论 | 历史专项文档 |
 
 复现示例：
 
@@ -76,6 +83,7 @@ python -m legacy_models.phase2.phase2_lopo --help
 | [summarize_phase3_suite.py](legacy_models/phase3/summarize_phase3_suite.py) | 汇总被中断或部分完成的 Phase 3 suite | 辅助工具 |
 | [export_phase3_submission.py](legacy_models/phase3/export_phase3_submission.py) | 导出 Phase 3 反馈 FIR 候选 | 诊断用，不是当前提交包 |
 | [phase3_submission_runtime.py](legacy_models/phase3/phase3_submission_runtime.py) | Phase 3 Participant Kit 运行时包装 | 由旧导出器复制 |
+| [PHASE3_FEEDBACK_FIR.md](legacy_models/phase3/PHASE3_FEEDBACK_FIR.md) | Phase 3 反馈 FIR 专家设计与失败结论 | 历史专项文档 |
 
 复现示例：
 
@@ -96,6 +104,7 @@ python -m legacy_models.phase3.export_phase3_submission --help
 | [phase3r_lopo.py](legacy_models/phase3r/phase3r_lopo.py) | 逐折移除专家和创新模板的严格 LOPO | 历史泛化诊断 |
 | [export_phase3r_submission.py](legacy_models/phase3r/export_phase3r_submission.py) | 导出 Phase 3R 诊断候选 | 非正式提交包 |
 | [phase3r_submission_runtime.py](legacy_models/phase3r/phase3r_submission_runtime.py) | Phase 3R Participant Kit 运行时包装 | 由旧导出器复制 |
+| [PHASE3R_INNOVATION_ROUTING.md](legacy_models/phase3r/PHASE3R_INNOVATION_ROUTING.md) | Phase 3R 创新路由设计与 LOPO 结论 | 历史专项文档 |
 
 复现示例：
 
@@ -106,9 +115,40 @@ python -m legacy_models.phase3r.phase3r_lopo --help
 python -m legacy_models.phase3r.export_phase3r_submission --help
 ```
 
-## 7. 保留在根目录的共享模块
+## 7. 已归档的 Phase 3G 辅助入口与提交包
 
-### 7.1 基础数据与官方评分
+### 7.1 Phase 3G 辅助入口
+
+| 文件 | 用途 | 状态 |
+|---|---|---|
+| [evaluate_phase3g_checkpoint.py](legacy_models/phase3g/evaluate_phase3g_checkpoint.py) | 从已有 checkpoint 恢复开发/压力验证 | 正式训练和最终评估已完成，仅保留复现 |
+
+### 7.2 历史提交产物
+
+目录：[legacy_models/submissions](legacy_models/submissions)
+
+| 目录 | 用途 | 状态 |
+|---|---|---|
+| `phase3_submission_smoke/` | Phase 3 反馈 FIR 的早期 smoke 包 | 历史产物 |
+| `phase3g_submission_smoke_v2/` | Phase 3G 导出链路 smoke 包 | 历史产物 |
+| `phase3g_submission_final_seed2027/` | Phase 3G 正式导出 v1 | 已被 v2/v3 替代 |
+| `phase3g_submission_final_seed2027_v2/` | Phase 3G 冻结对照 v2 | 已被 v3 替代；仍用于 E09-A 逐点等价回归 |
+
+这些目录不再出现在项目根目录。v2 仍可通过
+`legacy_models.submissions.phase3g_submission_final_seed2027_v2.submission:create_model`
+加载，但不能误作当前交付包。
+
+### 7.3 早期自定义场景输出
+
+目录：[legacy_models/evaluation_outputs](legacy_models/evaluation_outputs)
+
+这里保存 `evaluate_custom_scenes.py` 生成的两段 `Scene_*_Test` 录音、倍频程图、频谱图，
+以及早期评分标准截图。这些文件只用于历史可视化，不参与 Participant Kit v6 官方评分、
+当前训练、LOPO、Phase 4R 诊断或正式 ZIP。
+
+## 8. 保留在根目录的共享模块
+
+### 8.1 基础数据与官方评分
 
 | 文件 | 当前用途 |
 |---|---|
@@ -117,7 +157,7 @@ python -m legacy_models.phase3r.export_phase3r_submission --help
 | [phase1_validation.py](phase1_validation.py) | 官方 scorer 适配、记录聚合和固定场景验证 |
 | [v6_metrics.py](v6_metrics.py) | 官方六窗口、三分之一倍频程主指标和反弹的可微实现 |
 
-### 7.2 路径和闭环共享能力
+### 8.2 路径和闭环共享能力
 
 | 文件 | 当前用途 |
 |---|---|
@@ -132,7 +172,7 @@ python -m legacy_models.phase3r.export_phase3r_submission --help
 
 这些文件不能在不重构 Phase 3G 依赖的情况下移入“纯归档”目录。后续若希望进一步收紧根目录，应把它们迁入稳定的 `anc_core` 包，而不是归入旧模型。
 
-## 8. 当前正式模型文件
+## 9. 当前正式模型文件
 
 Phase 3G 正式链路继续保留在根目录，便于识别当前有效入口：
 
@@ -145,11 +185,15 @@ Phase 3G 正式链路继续保留在根目录，便于识别当前有效入口�
 - [phase3g_final_evaluation.py](phase3g_final_evaluation.py)：三种子和十路径最终评估；
 - [export_phase3g_submission.py](export_phase3g_submission.py)：正式提交包导出；
 - [phase3g_submission_runtime.py](phase3g_submission_runtime.py)：正式运行时包装。
+- [phase3g_submission_final_seed2027_v3](phase3g_submission_final_seed2027_v3)：当前唯一保留在根目录的正式提交源目录。
+- [benchmark_phase4r_runtime.py](benchmark_phase4r_runtime.py)：v2/v3 运行时等价与计时工具；
+- [phase4r_worst_path_diagnosis.py](phase4r_worst_path_diagnosis.py)：当前 Phase 4R 诊断入口；
+- [prepare_phase4r_e10a.py](prepare_phase4r_e10a.py)：E10-A 预注册协议闭合与邻居表生成。
 
-## 9. 注意事项
+## 10. 注意事项
 
 - 历史 checkpoint 和 `runs/` 目录没有移动，原实验记录中的 checkpoint 路径保持不变；
-- 已生成的旧提交 smoke 包没有改写，保证历史产物可审计；
+- 已生成的旧提交 smoke/v1/v2 包只移动路径、未改写内容，保证历史产物可审计；
 - 历史 Python 入口的调用方式从脚本路径改为模块形式，例如 `python -m legacy_models.phase2.train_phase2`；
-- 当前正式提交目录仍是 `phase3g_submission_final_seed2027_v2/`，不在 `legacy_models/` 中。
-
+- 当前正式提交目录是 `phase3g_submission_final_seed2027_v3/`，不在 `legacy_models/` 中；
+- 根目录中的 Phase 1/2/3/3R 共享 Python 模块仍被正式 Phase 3G、Phase 4R 或回归测试直接导入，不能在不重构包结构的情况下继续移动。

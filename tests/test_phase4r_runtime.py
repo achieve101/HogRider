@@ -11,7 +11,9 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from phase3g_submission_final_seed2027_v2.submission import create_model as create_v2
+from legacy_models.submissions.phase3g_submission_final_seed2027_v2.submission import (
+    create_model as create_v2,
+)
 from phase3g_submission_final_seed2027_v3.submission import create_model as create_v3
 import phase3g_submission_final_seed2027_v3.runtime as v3_runtime
 
@@ -58,7 +60,13 @@ class Phase4RRuntimeTests(unittest.TestCase):
                 self.assertTrue(np.isfinite(output))
 
     def test_v3_keeps_weights_and_config_portable(self):
-        v2_weights = ROOT / "phase3g_submission_final_seed2027_v2" / "weights.pt"
+        v2_weights = (
+            ROOT
+            / "legacy_models"
+            / "submissions"
+            / "phase3g_submission_final_seed2027_v2"
+            / "weights.pt"
+        )
         v3_weights = ROOT / "phase3g_submission_final_seed2027_v3" / "weights.pt"
         self.assertEqual(file_sha256(v2_weights), file_sha256(v3_weights))
         config_path = ROOT / "phase3g_submission_final_seed2027_v3" / "config.json"

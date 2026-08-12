@@ -234,7 +234,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--baseline-entry",
-        default="phase3g_submission_final_seed2027_v2.submission:create_model",
+        default=(
+            "legacy_models.submissions.phase3g_submission_final_seed2027_v2."
+            "submission:create_model"
+        ),
     )
     parser.add_argument(
         "--candidate-entry",

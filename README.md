@@ -329,7 +329,7 @@ conda run --no-capture-output -n pytorch2.5.1_py310 python -u -m legacy_models.p
 ```
 
 完整损失、数据隔离、LOPO、三种子最终验证与硬门槛见
-[`PHASE2_PATH_ROBUSTNESS.md`](PHASE2_PATH_ROBUSTNESS.md)。
+[`PHASE2_PATH_ROBUSTNESS.md`](legacy_models/phase2/PHASE2_PATH_ROBUSTNESS.md)。
 
 ### 7.1 Phase 3 反馈式 FIR 专家
 
@@ -343,7 +343,7 @@ Phase 2 证明纯前馈模型不能改善绝对最差路径后，Phase 3 改用 
 Phase 3 结束时正式模型仍为 P1-E2；后续已由通过全部门槛的 Phase 3G 替代。
 
 实现、训练决策树、数据封存规则和运行方法见
-[`PHASE3_FEEDBACK_FIR.md`](PHASE3_FEEDBACK_FIR.md)。
+[`PHASE3_FEEDBACK_FIR.md`](legacy_models/phase3/PHASE3_FEEDBACK_FIR.md)。
 
 ### 7.2 Phase 3R 创新误差路由
 
@@ -354,7 +354,8 @@ Phase 3R 保留通过容量门槛的 8 个 FIR oracle 专家，移除失败的 G
 
 但是，严格移除留出路径专家和模板的八折 LOPO 仅 3/8 折不退化，中位增益
 `-1.1187 dB`，因此 Phase 3R 未正式升级，路径 9/10 当时未访问，正式模型当时仍为 P1-E2。
-实现与复现命令见 [`PHASE3R_INNOVATION_ROUTING.md`](PHASE3R_INNOVATION_ROUTING.md)。
+实现与复现命令见
+[`PHASE3R_INNOVATION_ROUTING.md`](legacy_models/phase3r/PHASE3R_INNOVATION_ROUTING.md)。
 
 ### 7.3 Phase 3G 冻结权重生成式 FIR
 

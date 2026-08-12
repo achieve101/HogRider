@@ -42,11 +42,11 @@
 
 ```powershell
 python DEEPANC_PARTICIPANT_KIT/validate_submission.py `
-  --entry-point phase3g_submission_final_seed2027_v2.submission:create_model `
+  --entry-point legacy_models.submissions.phase3g_submission_final_seed2027_v2.submission:create_model `
   --device cpu
 
 python DEEPANC_PARTICIPANT_KIT/run_public_demo.py `
-  --entry-point phase3g_submission_final_seed2027_v2.submission:create_model `
+  --entry-point legacy_models.submissions.phase3g_submission_final_seed2027_v2.submission:create_model `
   --device cpu
 ```
 
