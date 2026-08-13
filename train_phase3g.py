@@ -7,7 +7,9 @@ import copy
 import hashlib
 import json
 import random
+import shutil
 import time
+import uuid
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -40,6 +42,7 @@ DEFAULT_ORACLE="runs/phase3_suite_seed2026_v2/P3-E1/checkpoints/best_phase3_sele
 DEFAULT_TEMPLATE="artifacts/phase3r_innovation_templates.npz"
 DEFAULT_P3R="runs/phase3r_suite_seed2026/P3R-E1c/candidate.pt"
 DEFAULT_ORACLE_SUMMARY="runs/phase3_suite_seed2026_v2/P3-E1/summary.json"
+CHECKPOINT_FORMAT_VERSION=2
 
 
 def _canonical_sha256(value: dict[str, Any]) -> str:
@@ -139,6 +142,208 @@ def append_jsonl(path: Path, value: Any) -> None:
         handle.write(json.dumps(value, ensure_ascii=False)+"\n")
 
 
+def file_sha256(path: str | Path) -> str:
+    digest=hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for block in iter(lambda:handle.read(1024*1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def capture_rng_state(loader_generator: torch.Generator) -> dict[str, Any]:
+    """Capture every RNG stream which can affect the next training epoch."""
+    return {
+        "python":random.getstate(),
+        "numpy":np.random.get_state(),
+        "torch_cpu":torch.get_rng_state(),
+        "torch_cuda":torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+        "data_loader_generator":loader_generator.get_state(),
+    }
+
+
+def restore_rng_state(state: dict[str, Any], loader_generator: torch.Generator) -> None:
+    random.setstate(state["python"])
+    np.random.set_state(state["numpy"])
+    torch.set_rng_state(state["torch_cpu"])
+    cuda_state=state.get("torch_cuda")
+    if cuda_state is not None:
+        if not torch.cuda.is_available():
+            raise RuntimeError("Checkpoint contains CUDA RNG state but CUDA is unavailable.")
+        torch.cuda.set_rng_state_all(cuda_state)
+    loader_generator.set_state(state["data_loader_generator"])
+
+
+def optimizer_to(optimizer: optim.Optimizer, device: torch.device) -> None:
+    for state in optimizer.state.values():
+        for key,value in state.items():
+            if torch.is_tensor(value):
+                state[key]=value.to(device)
+
+
+def _atomic_torch_save(value: dict[str, Any], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary=path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        torch.save(value, temporary)
+        temporary.replace(path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def _history_records(path: Path, through_epoch: int | None=None) -> list[dict[str, Any]]:
+    if not path.is_file():
+        return []
+    records=[]
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        value=json.loads(line)
+        if through_epoch is None or int(value["epoch"]) <= through_epoch:
+            records.append(value)
+    return records
+
+
+def _write_history(path: Path, records: list[dict[str, Any]]) -> None:
+    path.write_text(
+        "".join(json.dumps(value, ensure_ascii=False)+"\n" for value in records),
+        encoding="utf-8",
+    )
+
+
+def _legacy_training_state(checkpoint: dict[str, Any], checkpoint_path: Path) -> dict[str, Any]:
+    epoch=int(checkpoint["epoch"])
+    records=_history_records(checkpoint_path.parents[1]/"history.jsonl", epoch)
+    if records:
+        scored=[
+            (float(value["validation"]["development"]["phase3_selection_score"]), int(value["epoch"]))
+            for value in records
+        ]
+        best_score,best_epoch=max(scored)
+        stale=epoch-best_epoch
+    else:
+        metrics=(checkpoint.get("metrics") or {}).get("development", {})
+        best_score=float(metrics.get("phase3_selection_score", -float("inf")))
+        best_epoch=epoch
+        stale=0
+    return {
+        "completed_epoch":epoch, "best_score":best_score,
+        "best_epoch":best_epoch, "stale":stale,
+    }
+
+
+def _simulate_legacy_loader_state(
+    generator: torch.Generator,
+    *,
+    samples_per_epoch: int,
+    completed_epochs: int,
+) -> None:
+    """Best-effort reconstruction for v1 checkpoints; intentionally non-formal.
+
+    Every DataLoader iterator draws one worker base seed and the RandomSampler
+    then draws one permutation.  The original run made one calibration pass
+    before its completed epochs.
+    """
+    for _ in range(completed_epochs+1):
+        torch.empty((), dtype=torch.int64).random_(generator=generator)
+        torch.randperm(samples_per_epoch, generator=generator)
+
+
+def _resume_source_root(checkpoint_path: Path) -> Path:
+    return checkpoint_path.parents[1] if checkpoint_path.parent.name == "checkpoints" else checkpoint_path.parent
+
+
+def _copy_resume_history_and_best(
+    checkpoint_path: Path,
+    root: Path,
+    checkpoints: Path,
+    completed_epoch: int,
+    best_epoch: int | None,
+) -> None:
+    source_root=_resume_source_root(checkpoint_path)
+    records=_history_records(source_root/"history.jsonl", completed_epoch)
+    if records:
+        _write_history(root/"history.jsonl", records)
+    source_best=source_root/"checkpoints"/"best_phase3g_selection.pt"
+    if source_best.is_file():
+        shutil.copy2(source_best, checkpoints/"best_phase3g_selection.pt")
+        if best_epoch is not None:
+            shutil.copy2(source_best, checkpoints/f"best_epoch_{best_epoch:04d}.pt")
+
+
+def _validate_exact_resume_config(
+    checkpoint: dict[str, Any],
+    args: argparse.Namespace,
+    *,
+    epochs: int,
+    samples: int,
+    device: torch.device,
+    allow_patience_change: bool=False,
+) -> None:
+    frozen=checkpoint.get("config", {})
+    checks={
+        "stage":(args.stage, checkpoint.get("stage", frozen.get("stage"))),
+        "dataset_dir":(str(Path(args.dataset_dir).resolve()), str(Path(frozen.get("dataset_dir", args.dataset_dir)).resolve())),
+        "seed":(args.seed, int(frozen.get("seed", args.seed))),
+        "train_paths":(list(args.train_paths), list(frozen.get("train_paths", args.train_paths))),
+        "hidden_size":(args.hidden_size, int(frozen.get("hidden_size", args.hidden_size))),
+        "latent_size":(args.latent_size, int(frozen.get("latent_size", args.latent_size))),
+        "samples_per_epoch":(samples, int(frozen.get("samples_per_epoch_resolved", samples))),
+        "batch_size":(args.batch_size, int(frozen.get("batch_size", args.batch_size))),
+        "gradient_accumulation":(
+            args.gradient_accumulation,
+            int(frozen.get("gradient_accumulation", args.gradient_accumulation)),
+        ),
+        "generator_lr":(args.generator_lr, float(frozen.get("generator_lr", args.generator_lr))),
+        "dictionary_lr":(args.dictionary_lr, float(frozen.get("dictionary_lr", args.dictionary_lr))),
+        "gradient_clip":(args.gradient_clip, float(frozen.get("gradient_clip", args.gradient_clip))),
+        "max_train_batches":(args.max_train_batches, frozen.get("max_train_batches", args.max_train_batches)),
+        "num_workers":(args.num_workers, int(frozen.get("num_workers", args.num_workers))),
+        "correction_spec":(args.correction_spec, frozen.get("correction_spec", args.correction_spec)),
+        "stress_cases":(args.stress_cases, int(frozen.get("stress_cases", args.stress_cases))),
+        "p3r_checkpoint":(str(args.p3r_checkpoint), str(frozen.get("p3r_checkpoint", args.p3r_checkpoint))),
+        "resolved_device":(str(device), str(frozen.get("resolved_device", device))),
+    }
+    if not allow_patience_change:
+        checks["patience"]=(args.patience, int(frozen.get("patience", args.patience)))
+    mismatches={key:{"actual":actual,"expected":expected} for key,(actual,expected) in checks.items() if actual != expected}
+    if mismatches:
+        raise ValueError(f"Exact resume configuration changed: {mismatches}")
+    if epochs <= int(checkpoint["epoch"]):
+        raise ValueError("--epochs must be greater than the resumed checkpoint epoch.")
+
+
+def resume_is_legacy(checkpoint: dict[str, Any]) -> bool:
+    return bool(
+        int(checkpoint.get("checkpoint_format_version", 1)) < CHECKPOINT_FORMAT_VERSION
+        or "rng_state" not in checkpoint
+        or "training_state" not in checkpoint
+    )
+
+
+def require_resume_compatibility(checkpoint: dict[str, Any], allow_legacy: bool) -> bool:
+    legacy=resume_is_legacy(checkpoint)
+    if legacy and not allow_legacy:
+        raise ValueError(
+            "This checkpoint predates exact resume metadata; pass --allow-legacy-resume "
+            "to run a non-formal compatibility control."
+        )
+    return legacy
+
+
+def _validate_resume_manifest(
+    checkpoint_path: Path,
+    filename: str,
+    current: dict[str, Any],
+) -> None:
+    source=_resume_source_root(checkpoint_path)/filename
+    if not source.is_file():
+        raise ValueError(f"Resume source is missing {filename}.")
+    previous=json.loads(source.read_text(encoding="utf-8"))
+    if _canonical_sha256(previous) != _canonical_sha256(current):
+        raise ValueError(f"Resume {filename} changed, including data hashes or sealed-path policy.")
+
+
 def _load_p3r(path: str | Path) -> InnovationRoutedFIRController:
     checkpoint=torch.load(path, map_location="cpu", weights_only=False)
     model=InnovationRoutedFIRController(**checkpoint["model_config"])
@@ -179,12 +384,30 @@ def save_checkpoint(
     epoch: int,
     config: dict[str, Any],
     metrics: dict[str, Any] | None,
+    *,
+    loader_generator: torch.Generator | None=None,
+    best_score: float | None=None,
+    best_epoch: int | None=None,
+    stale: int | None=None,
+    resume_mode: str="fresh",
+    parent_checkpoint: str | Path | None=None,
 ) -> None:
-    torch.save({
+    payload={
+        "checkpoint_format_version":CHECKPOINT_FORMAT_VERSION,
         "phase": "3G", "stage": config["stage"], "epoch": epoch,
         "model_config": model.model_config, "model_state_dict": model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(), "config": config, "metrics": metrics,
-    }, path)
+        "training_state":{
+            "completed_epoch":epoch, "best_score":best_score,
+            "best_epoch":best_epoch, "stale":stale,
+        },
+        "resume_mode":resume_mode,
+        "parent_checkpoint":None if parent_checkpoint is None else str(parent_checkpoint),
+        "parent_checkpoint_sha256":None if parent_checkpoint is None else file_sha256(parent_checkpoint),
+    }
+    if loader_generator is not None:
+        payload["rng_state"]=capture_rng_state(loader_generator)
+    _atomic_torch_save(payload, path)
 
 
 def calibrate_features(
@@ -243,6 +466,9 @@ def main() -> None:
     parser.add_argument("--oracle-checkpoint", default=DEFAULT_ORACLE)
     parser.add_argument("--template", default=DEFAULT_TEMPLATE)
     parser.add_argument("--checkpoint", default=None)
+    parser.add_argument("--resume-checkpoint", default=None)
+    parser.add_argument("--allow-legacy-resume", action="store_true")
+    parser.add_argument("--save-every-epoch", action="store_true")
     parser.add_argument("--p3r-checkpoint", default=DEFAULT_P3R)
     parser.add_argument("--oracle-summary", default=DEFAULT_ORACLE_SUMMARY)
     parser.add_argument("--correction-spec", default=None)
@@ -265,6 +491,10 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument("--device", default="auto")
     args=parser.parse_args()
+    if args.checkpoint and args.resume_checkpoint:
+        parser.error("--checkpoint and --resume-checkpoint are mutually exclusive.")
+    if args.allow_legacy_resume and not args.resume_checkpoint:
+        parser.error("--allow-legacy-resume requires --resume-checkpoint.")
     epochs=args.epochs or (5 if args.stage == "warmup" else 15)
     samples=args.samples_per_epoch or (256 if args.stage == "warmup" else 128)
     if args.device == "auto":
@@ -272,6 +502,20 @@ def main() -> None:
     else: device=torch.device(args.device)
     set_seed(args.seed)
     root=Path(args.output_dir or f"runs/phase3g_{args.stage}_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+    resume_path=Path(args.resume_checkpoint).resolve() if args.resume_checkpoint else None
+    resume_checkpoint=(
+        torch.load(resume_path, map_location="cpu", weights_only=False)
+        if resume_path is not None else None
+    )
+    resume_is_legacy=(
+        require_resume_compatibility(resume_checkpoint, args.allow_legacy_resume)
+        if resume_checkpoint is not None else False
+    )
+    if resume_checkpoint is not None:
+        _validate_exact_resume_config(
+            resume_checkpoint, args, epochs=epochs, samples=samples, device=device,
+            allow_patience_change=resume_is_legacy,
+        )
     root.mkdir(parents=True, exist_ok=False); checkpoints=root/"checkpoints"; checkpoints.mkdir()
     source_config=json.loads((Path(args.oracle_checkpoint).parents[1]/"config.json").read_text(encoding="utf-8"))
     train_noises=source_config["train_noises"]
@@ -280,7 +524,13 @@ def main() -> None:
     ) if args.correction_spec else None)
     if correction:
         validate_e10a_training_config(correction, args, epochs, samples)
-    if args.stage == "warmup":
+    if resume_checkpoint is not None:
+        model=GenerativeInnovationFIRController(**resume_checkpoint["model_config"])
+        model.load_state_dict(resume_checkpoint["model_state_dict"])
+        model=model.to(device)
+        if model.hidden_size != args.hidden_size or model.latent_size != args.latent_size:
+            raise ValueError("Resume checkpoint capacity does not match the requested capacity.")
+    elif args.stage == "warmup":
         full=GenerativeInnovationFIRController.from_artifacts(
             args.oracle_checkpoint, args.template, hidden_size=args.hidden_size,
             latent_size=args.latent_size, seed=args.seed,
@@ -312,10 +562,14 @@ def main() -> None:
         neighbor_policy=neighbor_policy, neighbor_table=neighbor_table,
         correction_metadata=correction_metadata,
     )
+    if resume_path is not None:
+        _validate_resume_manifest(resume_path, "synthesis_manifest.json", synthesis_manifest)
     save_phase3g_manifest(root/"synthesis_manifest.json", synthesis_manifest)
     manifests=build_phase3_manifests(args.dataset_dir, args.seed)
     manifests["development"]["path_indices_zero_based"]=list(args.train_paths)
     manifests["development"]["split"]="phase3g_development"
+    if resume_path is not None:
+        _validate_resume_manifest(resume_path, "validation_manifests.json", manifests)
     save_json(root/"validation_manifests.json", manifests)
     oracle_summary=json.loads(Path(args.oracle_summary).read_text(encoding="utf-8"))
     p1_baseline=oracle_summary["baseline_development_metrics"]
@@ -328,15 +582,64 @@ def main() -> None:
         "model_config":model.model_config, "complexity":model.get_complexity(),
         "paths_policy":"only supplied subset of paths 1-8; paths 9/10 final-only",
         "correction":correction_metadata,
+        "resume_mode":(
+            "legacy-compatible" if resume_is_legacy or (
+                resume_checkpoint is not None
+                and not bool(resume_checkpoint.get("config", {}).get("formal_candidate_eligible", True))
+            ) else "exact" if resume_checkpoint is not None else "fresh"
+        ),
+        "resume_parent":None if resume_path is None else str(resume_path),
+        "formal_candidate_eligible":bool(
+            not resume_is_legacy
+            and (
+                resume_checkpoint is None
+                or resume_checkpoint.get("config", {}).get("formal_candidate_eligible", True)
+            )
+        ),
     })
     save_json(root/"config.json", config); save_json(root/"p1_baseline.json", p1_baseline)
-    calibrate_features(model, loader, device, args.calibration_batches)
+    if resume_checkpoint is None:
+        calibrate_features(model, loader, device, args.calibration_batches)
     optimizer=optim.Adam([
         {"params":list(model.gru.parameters())+list(model.latent_head.parameters()), "lr":args.generator_lr},
         {"params":[model.residual_dictionary], "lr":args.dictionary_lr},
     ], amsgrad=True)
-    best_score=-float("inf"); best_epoch=None; stale=0; last_validation=None; start_time=time.perf_counter()
-    for epoch in range(1, epochs+1):
+    best_score=-float("inf"); best_epoch=None; stale=0; last_validation=None; start_epoch=1
+    resume_mode=str(config["resume_mode"])
+    formal_candidate_eligible=bool(config["formal_candidate_eligible"])
+    if resume_checkpoint is not None:
+        optimizer.load_state_dict(resume_checkpoint["optimizer_state_dict"])
+        optimizer_to(optimizer, device)
+        training_state=(
+            _legacy_training_state(resume_checkpoint, resume_path)
+            if resume_is_legacy else resume_checkpoint["training_state"]
+        )
+        completed_epoch=int(training_state["completed_epoch"])
+        start_epoch=completed_epoch+1
+        best_score=float(training_state["best_score"])
+        best_epoch=None if training_state["best_epoch"] is None else int(training_state["best_epoch"])
+        stale=int(training_state["stale"])
+        _copy_resume_history_and_best(resume_path, root, checkpoints, completed_epoch, best_epoch)
+        if resume_is_legacy:
+            _simulate_legacy_loader_state(
+                generator, samples_per_epoch=samples, completed_epochs=completed_epoch,
+            )
+        else:
+            restore_rng_state(resume_checkpoint["rng_state"], generator)
+        resume_manifest={
+            "mode":resume_mode,
+            "formal_candidate_eligible":bool(config["formal_candidate_eligible"]),
+            "source_checkpoint":str(resume_path),
+            "source_checkpoint_sha256":file_sha256(resume_path),
+            "source_epoch":completed_epoch, "target_total_epochs":epochs,
+            "start_epoch":start_epoch, "feature_recalibrated":False,
+            "optimizer_restored":True, "rng_restored_exactly":not resume_is_legacy,
+            "best_score":best_score, "best_epoch":best_epoch, "stale":stale,
+        }
+        save_json(root/"resume_manifest.json", resume_manifest)
+    start_time=time.perf_counter()
+    stop_reason="epoch_budget_exhausted"
+    for epoch in range(start_epoch, epochs+1):
         dataset.set_epoch(epoch); model.train(); optimizer.zero_grad(set_to_none=True)
         totals=defaultdict(float); count=steps=0
         for batch_index, batch in enumerate(loader, start=1):
@@ -359,11 +662,40 @@ def main() -> None:
         record={"epoch":epoch, "samples":count, "optimizer_steps":steps,
                 "train":{key:value/max(1,count) for key,value in totals.items()}, "validation":last_validation}
         append_jsonl(root/"history.jsonl", record)
-        save_checkpoint(checkpoints/"latest.pt", model, optimizer, epoch, config, last_validation)
-        if score > best_score:
+        improved=score > best_score
+        if improved:
             best_score=score; best_epoch=epoch; stale=0
-            save_checkpoint(checkpoints/"best_phase3g_selection.pt", model, optimizer, epoch, config, last_validation)
-        else: stale+=1
+        else:
+            stale+=1
+        checkpoint_kwargs={
+            "loader_generator":generator, "best_score":best_score,
+            "best_epoch":best_epoch, "stale":stale, "resume_mode":resume_mode,
+            "parent_checkpoint":resume_path,
+        }
+        if args.save_every_epoch:
+            save_checkpoint(
+                checkpoints/f"epoch_{epoch:04d}.pt", model, optimizer, epoch,
+                config, last_validation, **checkpoint_kwargs,
+            )
+        save_checkpoint(
+            checkpoints/"latest.pt", model, optimizer, epoch, config,
+            last_validation, **checkpoint_kwargs,
+        )
+        if improved:
+            if args.save_every_epoch:
+                save_checkpoint(
+                    checkpoints/f"best_epoch_{epoch:04d}.pt", model, optimizer, epoch,
+                    config, last_validation, **checkpoint_kwargs,
+                )
+                shutil.copy2(
+                    checkpoints/f"best_epoch_{epoch:04d}.pt",
+                    checkpoints/"best_phase3g_selection.pt",
+                )
+            else:
+                save_checkpoint(
+                    checkpoints/"best_phase3g_selection.pt", model, optimizer,
+                    epoch, config, last_validation, **checkpoint_kwargs,
+                )
         print(f"Epoch {epoch}/{epochs}: S={development['primary_score_db']:.4f}, R={development['rebound_score_db']:.4f}, D={score:.4f}")
         if should_stop_warmup(
             args.stage,
@@ -371,8 +703,11 @@ def main() -> None:
             float(development["primary_score_db"]),
             None if p3r_metrics is None else float(p3r_metrics["primary_score_db"]),
         ):
+            stop_reason="warmup_guard"
             break
-        if stale >= args.patience: break
+        if stale >= args.patience:
+            stop_reason="patience_exhausted"
+            break
     selected=load_phase3g(checkpoints/"best_phase3g_selection.pt", torch.device("cpu")).eval()
     development=evaluate_phase3g_development(selected, args.dataset_dir, manifests["development"])
     full_development=args.train_paths == list(range(8))
@@ -390,6 +725,11 @@ def main() -> None:
         "stress_metrics":stress, "acceptance":gate, "complexity":selected.get_complexity(),
         "training_seconds":time.perf_counter()-start_time, "final_paths_touched":False,
         "formal_model":"P1-E2; Phase3G development/LOPO pending",
+        "resume_mode":resume_mode,
+        "formal_candidate_eligible":formal_candidate_eligible,
+        "start_epoch":start_epoch, "last_completed_epoch":epoch,
+        "target_total_epochs":epochs, "stop_reason":stop_reason,
+        "stale_epochs":stale, "best_selection_score":best_score,
     }
     save_json(root/"summary.json", summary)
 

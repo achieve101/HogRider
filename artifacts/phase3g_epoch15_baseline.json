@@ -1,0 +1,57 @@
+{
+  "artifact_version": 1,
+  "created_for": "Phase 3G staircase long-training protocol",
+  "formal_model_status": "frozen_reference_do_not_overwrite",
+  "selected_seed": 2027,
+  "selected_epoch": 15,
+  "checkpoint": "runs/phase3g_suite_seed2027/P3G-E2/checkpoints/best_phase3g_selection.pt",
+  "development_metrics": {
+    "primary_score_db": 20.03917323520656,
+    "rebound_score_db": 0.4447394749379539,
+    "worst_path_primary_db": 4.08835003044405,
+    "phase3_selection_score": 20.011952044838544
+  },
+  "formal_ten_path_metrics": {
+    "primary_score_db": 17.95846681425745,
+    "rebound_score_db": 1.687030916770508,
+    "composite": 12.064817494949061,
+    "worst_path_primary_db": 3.9775018906538215
+  },
+  "protected_files": [
+    {
+      "path": "runs/phase3g_suite_seed2027/P3G-E2/checkpoints/best_phase3g_selection.pt",
+      "size": 959842,
+      "sha256": "212FC9C1D50D7BA9CC0876294B1BE4751A307C4428288F2483A62EC17E58268D"
+    },
+    {
+      "path": "runs/phase3g_suite_seed2027/P3G-E2/checkpoints/latest.pt",
+      "size": 957026,
+      "sha256": "4C436B5F6D5E865D9AB39FCC18F593D669A073DED4DF5A8A12F449EF97B89E6A"
+    },
+    {
+      "path": "runs/phase3g_suite_seed2027/P3G-E2/history.jsonl",
+      "size": 13572,
+      "sha256": "5D148D28B6046F6C7020CA8693B2ABACDA78895E8631F91945A520DA9006ACD6"
+    },
+    {
+      "path": "runs/phase3g_suite_seed2027/P3G-E2/summary.json",
+      "size": 41601068,
+      "sha256": "02294676EAAB2C294B8BEF2A8EA17F9BBFBCF5E315B4E68C08035CEE84FED333"
+    },
+    {
+      "path": "runs/phase3g_suite_seed2027/P3G-E2/config.json",
+      "size": 1909,
+      "sha256": "C81782246358C6B0D4A9D6BE0DBDFDE2838504926B47628E3B71AF9258D0D5EF"
+    },
+    {
+      "path": "phase3g_submission_final_seed2027_v3/weights.pt",
+      "size": 449894,
+      "sha256": "7544A871D07DCCC89BB76197D81F9218D1AADA01ABF32183C9D78368CC399C0A"
+    },
+    {
+      "path": "dist/CCFANC.zip",
+      "size": 561233,
+      "sha256": "2BC1AC57D9D98A089BCAEC2CFC731DF8D62DAB735344D8AEC54B9F790286EE84"
+    }
+  ]
+}

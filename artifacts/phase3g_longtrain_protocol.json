@@ -1,0 +1,49 @@
+{
+  "protocol_version": 1,
+  "experiment": "P3G-LT-30-40-50",
+  "status": "implementation_ready_not_run",
+  "baseline_manifest": "artifacts/phase3g_epoch15_baseline.json",
+  "sealed_path_policy": {
+    "development_paths_one_based": [1, 2, 3, 4, 5, 6, 7, 8],
+    "final_paths_one_based": [9, 10],
+    "final_paths_must_remain_sealed_until_candidate_lock": true,
+    "single_final_evaluation": true,
+    "lopo_rerun": false,
+    "historical_lopo_is_architecture_reference_only": true
+  },
+  "training": {
+    "warmup_epochs": 5,
+    "staircase_budgets": [30, 40, 50],
+    "extension_window_epochs": 3,
+    "patience": 10,
+    "warmup_samples_per_epoch": 256,
+    "generalize_samples_per_epoch": 128,
+    "batch_size": 8,
+    "gradient_accumulation": 1,
+    "generator_lr": 0.0003,
+    "dictionary_lr": 0.00001,
+    "hidden_size": 32,
+    "latent_size": 16,
+    "stress_cases": 48,
+    "replication_seeds": [2026, 2027, 2028]
+  },
+  "exploration_acceptance": {
+    "phase3_selection_score_at_least": 20.261952044838544,
+    "rebound_score_db_at_most": 0.5447394749379539,
+    "worst_path_primary_db_at_least": 3.98835003044405,
+    "existing_phase3g_gate_must_pass": true
+  },
+  "replication_acceptance": {
+    "all_three_existing_phase3g_gates_must_pass": true,
+    "candidate_selection": "highest development phase3_selection_score",
+    "per_seed_improvement_not_required": true
+  },
+  "final_promotion": {
+    "existing_phase3_final_acceptance_must_pass": true,
+    "ten_path_primary_score_db_at_least": 17.95846681425745,
+    "ten_path_composite_at_least": 12.064817494949061,
+    "ten_path_rebound_score_db_at_most": 1.787030916770508,
+    "ten_path_worst_path_primary_db_at_least": 3.8775018906538214,
+    "automatic_export_or_overwrite": false
+  }
+}
